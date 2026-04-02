@@ -1,7 +1,7 @@
 autoOpen: true # 打开工作空间时是否自动开启所有应用的预览
 apps:
   - port: 5173 # 应用的端口
-    run: yarn && yarn run dev --host 0.0.0.0 # 应用的启动命令
+    run: npm run dev # 应用的启动命令
     root: ./ # 应用的启动目录
     name: Vue.js Quickstart Demo # 应用名称
     description: Vue.js Quickstart Project # 应用描述

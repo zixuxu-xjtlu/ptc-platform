@@ -1,10 +1,54 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
-    <meta charset="UTF-8">
-    <link rel="icon" href="/favicon.ico">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vite App</title>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/jpeg" href="/11.jpg" /> 
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <title>伴学社智能管理平台</title>
+
+    <script>
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          displayMath: [['$$', '$$'], ['\\[', '\\]']],
+          processEscapes: true,
+          // 允许在公式中使用颜色等扩展
+          packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined', 'color']}
+        },
+        options: {
+          // 忽略 Vue 可能会用到的一些特殊标签
+          skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+        },
+        startup: {
+          typeset: false // 依然保持手动触发，避免 Vue 路由切换时渲染失败
+        }
+      };
+
+      // 2. 定义一个全局辅助函数，方便在 Vue 组件中一键刷新公式
+      window.reMath = function() {
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          // 延迟一小会儿执行，确保 Vue 已经把题目的 HTML 完全画在了屏幕上
+          setTimeout(() => {
+            // 🌟 核心修复：强制清除 MathJax 的记忆缓存
+            window.MathJax.typesetClear(); 
+            // 重新扫描并渲染整个页面的数学公式
+            window.MathJax.typesetPromise().catch((err) => console.log('渲染失败:', err));
+          }, 150); // 时间稍微留长一点点，保证万无一失
+        }
+      };
+    </script>
+
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+      /* 确保长公式在移动端可以横向滚动，不撑开页面 */
+      mjx-container {
+        overflow-x: auto;
+        overflow-y: hidden;
+        max-width: 100%;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>

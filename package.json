@@ -8,10 +8,22 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.3.4"
+    "@cloudbase/js-sdk": "^2.25.6",
+    "@element-plus/icons-vue": "^2.3.2",
+    "@vitejs/plugin-rsc": "^0.5.6",
+    "autoprefixer": "^10.4.24",
+    "echarts": "^6.0.0",
+    "element-plus": "^2.13.2",
+    "lucide-vue-next": "^0.574.0",
+    "marked": "^17.0.3",
+    "pinia": "^3.0.4",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "vue": "^3.3.4",
+    "vue-router": "^4.6.4"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.2.3",
-    "vite": "^4.3.9"
+    "vite": "^5.4.21"
   }
 }
