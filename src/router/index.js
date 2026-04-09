@@ -71,12 +71,17 @@ const routes = [
         name: 'UserMajorDetail',
         component: () => import('../views/user/MajorDetail.vue') 
       },
-      // 🌟 新增：在线答题挑战页路由
       { 
         path: 'quiz', 
         name: 'UserQuiz',
         component: () => import('../views/user/UserQuiz.vue') 
-      }
+      },
+      // 🌟 新增：User 端个人荣誉陈列室 (已隐藏)
+      // {
+      //   path: 'achievements',
+      //   name: 'UserAchievements',
+      //   component: () => import('../views/user/Achievements.vue')
+      // }
     ]
   },
 
@@ -129,9 +134,20 @@ const routes = [
       {
         path: 'quiz-manage',
         name: 'AdminQuizManage',
-        // 直接复用 member 文件夹下的组件，逻辑和数据都是通用的！
         component: () => import('../views/member/QuizManage.vue')
-      }
+      },
+      // 🌟 新增：Admin 物资仓库管理（已经挪回这里啦！）
+      {
+        path: 'inventory',
+        name: 'AdminInventory',
+        component: () => import('../views/admin/InventoryManage.vue')
+      },
+      // 🌟 新增：Admin 上帝模式成就管理 (已隐藏)
+      // {
+      //   path: 'god-mode',
+      //   name: 'AdminGodMode',
+      //   component: () => import('../views/admin/GodModeAchievements.vue')
+      // }
     ]
   },
 
@@ -179,9 +195,14 @@ const routes = [
       {
         path: 'quiz-manage',
         name: 'MemberQuizManage',
-        // 指向我们接下来要写的题库管理组件
         component: () => import('../views/member/QuizManage.vue') 
       }
+      // 🌟 新增：Member 端个人荣誉陈列室 (已隐藏)
+      // {
+      //   path: 'achievements',
+      //   name: 'MemberAchievements',
+      //   component: () => import('../views/user/Achievements.vue')
+      // }
     ]
   }
 ] 

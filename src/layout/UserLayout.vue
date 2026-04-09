@@ -36,6 +36,11 @@
           <el-icon><EditPen /></el-icon>
           <span>智学挑战</span>
         </el-menu-item>
+        
+        <!-- <el-menu-item index="/user/achievements">
+          <el-icon><Medal /></el-icon>
+          <span>荣誉陈列室</span>
+        </el-menu-item> -->
 
         <el-sub-menu index="tools">
           <template #title>
@@ -79,8 +84,7 @@
 
 <script setup>
 import { useRouter } from 'vue-router'
-// 🌟 补充引入了 Box 图标作为百宝箱的标志
-import { Odometer, Basketball, Calendar, Goods, Reading, Guide, DataLine, EditPen, Box } from '@element-plus/icons-vue'
+import { Odometer, Basketball, Calendar, Goods, Reading, Guide, DataLine, EditPen, Box, Medal } from '@element-plus/icons-vue'
 import { ref } from 'vue'
 import AIAssistant from '../components/AIAssistant.vue'
 
@@ -101,7 +105,6 @@ const handleLogout = () => {
 .header { background-color: #fff; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
 .main-content { background-color: #f5f7fa; padding: 20px; }
 
-/* 微调折叠菜单内部小标题的样式，让它更好看一点 */
 :deep(.el-menu-item-group__title) {
   font-size: 12px;
   color: #909399;

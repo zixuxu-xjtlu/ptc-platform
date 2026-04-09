@@ -37,11 +37,15 @@
           <el-icon><Present /></el-icon>
           <span>积分兑换区</span>
         </el-menu-item>
-        
         <el-menu-item index="/member/quiz-manage">
           <el-icon><EditPen /></el-icon>
           <span>智学题库管理</span>
         </el-menu-item>
+        
+        <!-- <el-menu-item index="/member/achievements">
+          <el-icon><Medal /></el-icon>
+          <span>荣誉陈列室</span>
+        </el-menu-item> -->
       </el-menu>
     </el-aside>
 
@@ -93,8 +97,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-// 🌟 引入 EditPen 和 Bell 图标
-import { DataBoard, List, Trophy, Present, Reading, EditPen, Bell } from '@element-plus/icons-vue'
+import { DataBoard, List, Trophy, Present, Reading, EditPen, Bell, Medal } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { db } from '../cloudbase'
 
@@ -108,7 +111,6 @@ const currentDept = ref(currentUser.value.department || '')
 const totalPoints = ref(currentUser.value.points || 0)
 const workPoints = ref(currentUser.value.workPoints || 0)
 
-// 拦截逻辑
 const infoDialogVisible = ref(false)
 const saving = ref(false)
 const formInfo = ref({ realName: '', department: '' })
@@ -154,7 +156,6 @@ const handleLogout = () => {
 </script>
 
 <style scoped>
-/* 统一使用与 UserLayout 相同的亮色清新风格 */
 .layout-container { height: 100vh; }
 .aside { background-color: #fff; border-right: 1px solid #e6e6e6; display: flex; flex-direction: column; }
 .logo-area { height: 60px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #f0f0f0; transition: background-color 0.3s; }
@@ -166,7 +167,6 @@ const handleLogout = () => {
 .header-left { font-weight: 500; color: #303133; }
 .main-content { background-color: #f5f7fa; padding: 20px; overflow-y: auto; }
 
-/* 实用工具类 */
 .flex { display: flex; }
 .items-center { align-items: center; }
 </style>

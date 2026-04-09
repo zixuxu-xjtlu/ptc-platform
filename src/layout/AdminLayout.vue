@@ -41,6 +41,14 @@
         <el-menu-item index="/admin/work">
           <el-icon><Connection /></el-icon><span>工作分配与模板</span>
         </el-menu-item>
+
+        <el-menu-item index="/admin/inventory">
+          <el-icon><Box /></el-icon><span>物资仓库管理</span>
+        </el-menu-item>
+
+        <!-- <el-menu-item index="/admin/god-mode">
+         <el-icon><View /></el-icon><span>👁️‍🗨️ 成就法则管理</span>
+        </el-menu-item> -->
         
         <div class="logout-box">
           <el-button type="danger" plain class="w-100" @click="handleLogout">退出管理后台</el-button>
@@ -93,10 +101,9 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-// 🌟 补充了你模板里用到了但没引入的 Guide, Reading，以及新加的 EditPen
-import { User, Goods, Calendar, Odometer, House, Connection, Guide, Reading, EditPen } from '@element-plus/icons-vue'
+import { User, Goods, Calendar, Odometer, House, Connection, Guide, Reading, EditPen, View } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { db } from '../cloudbase' // 引入云数据库
+import { db } from '../cloudbase'
 
 const route = useRoute()
 const router = useRouter()
@@ -112,7 +119,6 @@ const savingDept = ref(false)
 const deptOptions = ['主席团', '学术部', '行政部', '宣传部', '活动部']
 
 onMounted(() => {
-  // 如果是管理员，且没有部门信息，弹出强制拦截框！
   if (currentUser.value.role === 'admin' && !currentUser.value.department) {
     deptDialogVisible.value = true
   }
@@ -125,7 +131,6 @@ const saveDepartment = async () => {
     await db.collection('users').doc(currentUser.value._id).update({
       department: selectedDept.value
     })
-    // 更新本地缓存
     currentUser.value.department = selectedDept.value
     currentDept.value = selectedDept.value
     localStorage.setItem('user', JSON.stringify(currentUser.value))
