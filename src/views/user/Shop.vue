@@ -145,7 +145,8 @@ const handleExchange = async (product) => {
         `兑换将消耗 ${product.cost} 积分。\n请输入学校邮箱以便发货：`,
         '填写收货邮箱',
         {
-          confirmButtonText: '确定兑换', cancelButtonText: '取消',
+          confirmButtonText: '确定兑换', 
+          cancelButtonText: '取消',
           inputPattern: /^[a-zA-Z0-9._-]+@student\.xjtlu\.edu\.cn$/,
           inputErrorMessage: '后缀错误！必须是 @student.xjtlu.edu.cn 的邮箱',
         }
@@ -163,8 +164,13 @@ const handleExchange = async (product) => {
     await db.collection('users').doc(currentUser.value._id).update({ points: _.inc(-product.cost) })
     await db.collection('shop').doc(product._id).update({ stock: _.inc(-1) })
     await db.collection('orders').add({
-      buyerId: currentUser.value._id, buyerName: currentUser.value.username, buyerEmail: buyerEmail, 
-      itemName: product.name, itemCost: product.cost, status: isMaterial ? '已自动发放' : '待发放', createTime: new Date().getTime()
+      buyerId: currentUser.value._id, 
+      buyerName: currentUser.value.username, 
+      buyerEmail: buyerEmail, 
+      itemName: product.name, 
+      itemCost: product.cost, 
+      status: isMaterial ? '已自动发放' : '待发放', 
+      createTime: new Date().getTime()
     })
 
     currentPoints.value -= product.cost
@@ -172,21 +178,43 @@ const handleExchange = async (product) => {
     localStorage.setItem('user', JSON.stringify(currentUser.value))
     product.stock -= 1
 
+    // === 核心修改部分：处理移动端与微信环境的下载拦截 ===
     if (isMaterial && product.fileUrl) {
       ElMessage.success('兑换成功！开始下载...')
-      const link = document.createElement('a')
-      link.href = product.fileUrl
-      link.setAttribute('download', product.name) 
-      link.target = '_blank'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+      
+      setTimeout(() => {
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+        const isWeChat = /MicroMessenger/i.test(navigator.userAgent)
+        
+        if (isMobile && isWeChat) {
+          // 微信内置浏览器：强提醒用户跳出微信下载
+          ElMessageBox.alert('微信限制了文件下载，请点击右上角三个点【在浏览器打开】进行下载哦！', '温馨提示', {
+            confirmButtonText: '知道了',
+            type: 'warning'
+          })
+        } else if (isMobile) {
+          // 移动端自带浏览器：直接覆盖当前 URL 触发系统下载
+          window.location.href = product.fileUrl
+        } else {
+          // 电脑端：创建 a 标签触发新窗口下载
+          const link = document.createElement('a')
+          link.href = product.fileUrl
+          link.setAttribute('download', product.name) 
+          link.target = '_blank'
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+        }
+      }, 500) // 延迟让 Message 弹窗渲染完
+
     } else {
       ElMessage.success('兑换成功！留意邮箱通知')
     }
   } catch (err) {
     ElMessage.error('兑换发生异常')
-  } finally { exchangeLoading.value = '' }
+  } finally { 
+    exchangeLoading.value = '' 
+  }
 }
 </script>
 
