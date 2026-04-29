@@ -31,6 +31,7 @@
                     fit="cover" 
                     class="table-img"
                     :preview-src-list="[scope.row.image]"
+                    preview-teleported
                   />
                   <div v-else class="img-placeholder">🎁</div>
                 </div>
@@ -47,7 +48,7 @@
               </template>
             </el-table-column>
             
-            <el-table-column label="库存" width="100">
+            <el-table-column label="商城剩余" width="100">
               <template #default="scope">
                 <el-tag :type="scope.row.stock > 5 ? 'success' : 'danger'" effect="dark" round size="small" class="stock-tag">
                   {{ scope.row.stock > 0 ? `剩 ${scope.row.stock}` : '售罄' }}
@@ -58,7 +59,7 @@
             <el-table-column label="操作" width="160" align="right">
               <template #default="scope">
                 <div class="op-btns">
-                  <el-button type="success" link icon="List" @click="viewOrders(scope.row)">名单</el-button>
+                  <el-button type="success" link icon="List" @click="viewOrders(scope.row)">兑换名单</el-button>
                   <el-button type="danger" link icon="Delete" @click="handleDelete(scope.row._id)">下架</el-button>
                 </div>
               </template>
@@ -114,29 +115,65 @@
       <el-form :model="form" label-position="top">
         <el-form-item label="物品分类">
           <el-radio-group v-model="form.type" class="modern-radio">
-            <el-radio-button label="merch">🎁 实体周边</el-radio-button>
+            <el-radio-button label="merch">🎁 实体周边 (从仓库导入)</el-radio-button>
             <el-radio-button label="material">📁 电子资料</el-radio-button>
           </el-radio-group>
         </el-form-item>
 
-        <el-form-item :label="form.type === 'merch' ? '周边名称' : '资料名称'" required>
-          <el-input v-model="form.name" placeholder="请输入商品展示名称" />
+        <el-form-item v-if="form.type === 'merch'" label="选择仓库物资 (必填)" required>
+          <el-select 
+            v-model="form.inventoryItem" 
+            value-key="_id" 
+            placeholder="请选择要上架的仓库物资" 
+            class="full-width"
+            :loading="fetchingInventory"
+          >
+            <el-option 
+              v-for="item in inventoryOptions" 
+              :key="item._id" 
+              :label="item.name" 
+              :value="item"
+              :disabled="item.stock <= 0"
+            >
+              <div class="select-option-custom">
+                <el-avatar shape="square" :size="24" :src="item.image" style="margin-right: 8px;" />
+                <span style="flex: 1">{{ item.name }}</span>
+                <span style="color: #94a3b8; font-size: 12px;">仓库剩余: {{ item.stock }}件</span>
+              </div>
+            </el-option>
+          </el-select>
+          <div v-if="form.inventoryItem" class="selected-preview mt-10">
+            <img v-if="form.inventoryItem.image" :src="form.inventoryItem.image" class="preview-mini-img" />
+            <div class="preview-text">
+              <strong>已选中：{{ form.inventoryItem.name }}</strong>
+              <p>系统将自动使用该物资的照片和名称进行上架</p>
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-form-item v-if="form.type === 'material'" label="资料名称 (必填)" required>
+          <el-input v-model="form.name" placeholder="请输入资料展示名称" />
         </el-form-item>
 
         <el-row :gutter="20">
           <el-col :xs="24" :md="12">
-            <el-form-item label="单价 (积分)" required>
+            <el-form-item label="兑换单价 (积分)" required>
               <el-input-number v-model="form.cost" :min="0" class="full-width" />
             </el-form-item>
           </el-col>
           <el-col :xs="24" :md="12">
-            <el-form-item label="初始库存/额度" required>
-              <el-input-number v-model="form.stock" :min="1" class="full-width" />
+            <el-form-item label="上架数量/额度" required>
+              <el-input-number 
+                v-model="form.stock" 
+                :min="1" 
+                :max="form.type === 'merch' && form.inventoryItem ? form.inventoryItem.stock : 9999" 
+                class="full-width" 
+              />
             </el-form-item>
           </el-col>
         </el-row>
 
-        <el-form-item :label="form.type === 'merch' ? '展示主图 (建议比例1:1)' : '上传资料源文件 (必填)'">
+        <el-form-item v-if="form.type === 'material'" label="上传资料源文件 (必填)">
           <el-upload
             class="premium-uploader"
             drag
@@ -152,6 +189,7 @@
           </el-upload>
         </el-form-item>
       </el-form>
+      
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="dialogVisible = false" round>取消</el-button>
@@ -192,10 +230,15 @@ const uploading = ref(false)
 const uploadRef = ref(null)
 const shopList = ref([])
 
+// 🌟 新增：仓库数据状态
+const fetchingInventory = ref(false)
+const inventoryOptions = ref([])
+
 const merchList = computed(() => shopList.value.filter(item => item.type !== 'material'))
 const materialList = computed(() => shopList.value.filter(item => item.type === 'material'))
 
-const form = ref({ type: 'merch', name: '', cost: 50, stock: 10 })
+// form 结构修改，支持 inventoryItem 存入选中的整个物资对象
+const form = ref({ type: 'merch', name: '', inventoryItem: null, cost: 50, stock: 1 })
 const selectedFile = ref(null)
 
 const orderDialogVisible = ref(false)
@@ -203,7 +246,10 @@ const orderLoading = ref(false)
 const orderList = ref([])
 const currentViewItem = ref({})
 
-onMounted(() => { fetchShopItems() })
+onMounted(() => { 
+  fetchShopItems()
+  fetchInventoryOptions() // 页面加载时顺便拉取仓库选项
+})
 
 const fetchShopItems = async () => {
   loading.value = true
@@ -211,6 +257,20 @@ const fetchShopItems = async () => {
     const res = await db.collection('shop').limit(100).get()
     shopList.value = (res.data || []).sort((a,b) => new Date(b.createTime) - new Date(a.createTime))
   } catch (error) {} finally { loading.value = false }
+}
+
+// 🌟 获取仓库物资选项列表
+const fetchInventoryOptions = async () => {
+  fetchingInventory.value = true
+  try {
+    // 拉取仓库里所有物资
+    const res = await db.collection('inventory').limit(200).get()
+    inventoryOptions.value = res.data || []
+  } catch (error) {
+    console.error('获取仓库物资失败', error)
+  } finally {
+    fetchingInventory.value = false
+  }
 }
 
 const viewOrders = async (item) => {
@@ -223,38 +283,70 @@ const viewOrders = async (item) => {
   } catch (error) {} finally { orderLoading.value = false }
 }
 
-const openUploadDialog = () => dialogVisible.value = true
+const openUploadDialog = () => {
+  dialogVisible.value = true
+  fetchInventoryOptions() // 每次打开重新拉取最新库存
+}
 const handleFileChange = (file) => selectedFile.value = file.raw
 const handleFileRemove = () => selectedFile.value = null
 
 const resetForm = () => {
-  form.value = { type: 'merch', name: '', cost: 50, stock: 10 }
+  form.value = { type: 'merch', name: '', inventoryItem: null, cost: 50, stock: 1 }
   selectedFile.value = null
   if (uploadRef.value) uploadRef.value.clearFiles()
 }
 
 const submitUpload = async () => {
-  if (!form.value.name) return ElMessage.warning('请输入名称')
-  if (form.value.type === 'material' && !selectedFile.value) return ElMessage.error('电子资料必须上传文件！')
+  // 🌟 校验逻辑分支
+  if (form.value.type === 'merch') {
+    if (!form.value.inventoryItem) return ElMessage.warning('请选择仓库中的物资！')
+    if (form.value.stock > form.value.inventoryItem.stock) return ElMessage.warning('上架数量不能超过仓库实际库存！')
+  } else {
+    if (!form.value.name) return ElMessage.warning('请输入资料名称！')
+    if (!selectedFile.value) return ElMessage.error('电子资料必须上传源文件！')
+  }
+
   uploading.value = true
   try {
     let fileUrl = ''
-    if (selectedFile.value) {
-      const file = selectedFile.value
-      const path = `shop/${Date.now()}_${file.name}`
-      const uploadRes = await app.uploadFile({ cloudPath: path, filePath: file })
-      const urlRes = await app.getTempFileURL({ fileList: [uploadRes.fileID] })
-      fileUrl = urlRes.fileList[0].tempFileURL
+    let finalName = ''
+    let finalImage = ''
+
+    if (form.value.type === 'merch') {
+      // 实体周边：直接提取仓库物品的信息
+      finalName = form.value.inventoryItem.name
+      finalImage = form.value.inventoryItem.image
+    } else {
+      // 电子资料：上传文件
+      finalName = form.value.name
+      if (selectedFile.value) {
+        const file = selectedFile.value
+        const path = `shop/${Date.now()}_${file.name}`
+        const uploadRes = await app.uploadFile({ cloudPath: path, filePath: file })
+        const urlRes = await app.getTempFileURL({ fileList: [uploadRes.fileID] })
+        fileUrl = urlRes.fileList[0].tempFileURL
+      }
     }
+
     await db.collection('shop').add({
-      name: form.value.name, type: form.value.type, cost: form.value.cost, stock: form.value.stock,
-      image: form.value.type === 'merch' ? fileUrl : '', fileUrl: form.value.type === 'material' ? fileUrl : '',
+      name: finalName, 
+      type: form.value.type, 
+      cost: form.value.cost, 
+      stock: form.value.stock,
+      image: finalImage, // 如果是周边就有图，是资料就为空
+      fileUrl: form.value.type === 'material' ? fileUrl : '',
+      inventoryId: form.value.type === 'merch' ? form.value.inventoryItem._id : '', // 记录来源物资的ID关联
       createTime: new Date().getTime()
     })
+
     ElMessage.success('🎉 商品已成功上架！')
     dialogVisible.value = false
     fetchShopItems()
-  } catch (error) {} finally { uploading.value = false }
+  } catch (error) {
+    ElMessage.error('上架失败')
+  } finally { 
+    uploading.value = false 
+  }
 }
 
 const handleDelete = async (id) => {
@@ -299,6 +391,13 @@ const handleDelete = async (id) => {
 .price-badge.purple { background: #f5f3ff; color: #7c3aed; }
 .stock-tag { font-weight: bold; border: none; letter-spacing: 0.5px; }
 .op-btns { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+
+/* 🌟 下拉框选项自定义样式 */
+.select-option-custom { display: flex; align-items: center; width: 100%; }
+.selected-preview { display: flex; align-items: center; gap: 12px; background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px dashed #cbd5e1; margin-top: 10px; }
+.preview-mini-img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; }
+.preview-text { display: flex; flex-direction: column; font-size: 13px; color: #333; }
+.preview-text p { margin: 4px 0 0 0; color: #94a3b8; font-size: 12px; }
 
 .premium-uploader :deep(.el-upload-dragger) { border-radius: 16px; border: 2px dashed #e2e8f0; transition: 0.3s; padding: 20px;}
 .premium-uploader :deep(.el-upload-dragger:hover) { border-color: #6366f1; background: #f5f3ff; }

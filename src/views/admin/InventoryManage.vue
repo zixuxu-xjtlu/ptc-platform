@@ -73,7 +73,7 @@
             <img v-if="newItem.image" :src="newItem.image" class="avatar" />
             <el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
           </el-upload>
-          <div class="text-xs text-gray-400 mt-2">点击上传图片 (大小建议不超过 2MB)</div>
+          <div class="text-xs text-gray-400 mt-2">点击上传图片 (大小建议不超过 5MB)</div>
         </el-form-item>
         <el-form-item label="物资名称 (必填)" required>
           <el-input v-model="newItem.name" placeholder="例如：社团定制作业本 / 帐篷" />
@@ -112,7 +112,7 @@
     <el-dialog v-model="logsDialogVisible" :title="`📜 [${activeItem?.name}] 流水账本`" width="700px">
       <el-table :data="itemLogs" v-loading="loadingLogs" height="400px" stripe>
         <el-table-column label="时间" width="160">
-          <template #default="scope">{{ formatDate(scope.createTime) }}</template>
+          <template #default="scope">{{ formatDate(scope.row.createTime) }}</template>
         </el-table-column>
         <el-table-column label="操作人" prop="operator" width="100" />
         <el-table-column label="动作" width="100" align="center">
@@ -133,7 +133,8 @@
 import { ref, onMounted } from 'vue'
 import { Plus, Remove, CirclePlus, List, Picture } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { db } from '../../cloudbase'
+// 🌟 核心引入：增加 app 实例用于调用云存储 API
+import { db, app } from '../../cloudbase'
 
 const currentUser = ref(JSON.parse(localStorage.getItem('user') || '{}'))
 
@@ -153,6 +154,9 @@ const itemLogs = ref([])
 const newItem = ref({ name: '', image: '', stock: 1 })
 const adjustForm = ref({ type: 'in', amount: 1, reason: '' })
 
+// 🌟 新增：存放用户选中的真实文件，准备稍后上传
+const selectedFile = ref(null)
+
 // 初始加载
 onMounted(() => {
   fetchInventory()
@@ -170,35 +174,59 @@ const fetchInventory = async () => {
   }
 }
 
-// 📸 图片转码黑科技：直接把图片转成 Base64 字符串存入数据库，无需配置云存储！
+// 📸 全新逻辑：只做本地极速预览，先不上传
 const handleImageChange = (file) => {
-  // 检查文件大小 (限制 2MB)
-  if (file.size > 2 * 1024 * 1024) {
-    ElMessage.warning('图片太大了！请上传 2MB 以内的图片')
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.warning('图片太大了！请上传 5MB 以内的图片')
     return
   }
-  const reader = new FileReader()
-  reader.readAsDataURL(file.raw)
-  reader.onload = () => {
-    newItem.value.image = reader.result // 存入 Base64
-  }
+  
+  // 保存真实文件，供提交时上传到云存储
+  selectedFile.value = file.raw
+  // 生成本地内存里的临时链接，用于弹窗里马上展示给用户看
+  newItem.value.image = URL.createObjectURL(file.raw)
 }
 
 const openAddDialog = () => {
   newItem.value = { name: '', image: '', stock: 1 }
+  selectedFile.value = null // 每次打开清空上次的文件
   addDialogVisible.value = true
 }
 
 const submitNewItem = async () => {
   submitting.value = true
+  let finalImageUrl = ''
+
   try {
-    // 1. 在主库创建物资
+    // 1. 如果用户选了图片，先上传到云存储
+    if (selectedFile.value) {
+      ElMessage.info('正在上传图片到云端，请稍候...')
+      
+      // 生成云端路径（带时间戳防止重名覆盖）
+      const cloudPath = `inventory/${Date.now()}-${selectedFile.value.name}`
+      
+      // 调用云存储上传 API
+      const uploadRes = await app.uploadFile({
+        cloudPath: cloudPath,
+        filePath: selectedFile.value
+      })
+
+      // 把云存储的 fileID 换取成真实的 http 网址
+      const urlRes = await app.getTempFileURL({
+        fileList: [uploadRes.fileID]
+      })
+      finalImageUrl = urlRes.fileList[0].tempFileURL
+    }
+
+    // 2. 将包含真实网络链接的数据存入数据库
     const addRes = await db.collection('inventory').add({
-      ...newItem.value,
+      name: newItem.value.name,
+      stock: newItem.value.stock,
+      image: finalImageUrl || newItem.value.image, // 如果没图就空着
       createTime: Date.now()
     })
     
-    // 2. 自动在日志库里记录“初始建仓”
+    // 3. 自动在日志库里记录“初始建仓”
     await db.collection('inventory_logs').add({
       itemId: addRes.id,
       itemName: newItem.value.name,
@@ -211,9 +239,11 @@ const submitNewItem = async () => {
 
     ElMessage.success('物资登记成功！')
     addDialogVisible.value = false
+    selectedFile.value = null // 成功后清理临时文件
     fetchInventory()
   } catch (e) {
-    ElMessage.error('登记失败')
+    console.error('登记错误:', e)
+    ElMessage.error('登记失败，请检查网络或控制台')
   } finally {
     submitting.value = false
   }
@@ -295,9 +325,18 @@ const formatDate = (ts) => {
 .item-img { width: 60px; height: 60px; border-radius: 12px; object-fit: cover; border: 1px solid #e2e8f0; }
 .img-placeholder { width: 60px; height: 60px; border-radius: 12px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 24px; }
 
-/* 上传框样式 */
-.avatar-uploader .el-upload { border: 2px dashed #dcdfe6; border-radius: 12px; cursor: pointer; position: relative; overflow: hidden; transition: 0.3s; }
-.avatar-uploader .el-upload:hover { border-color: #409EFF; }
+/* 🌟 修复：加上 :deep() 穿透范围限制，确保上传框能显示虚线边框 */
+:deep(.avatar-uploader .el-upload) { 
+  border: 2px dashed #dcdfe6; 
+  border-radius: 12px; 
+  cursor: pointer; 
+  position: relative; 
+  overflow: hidden; 
+  transition: 0.3s; 
+  width: 120px;
+  height: 120px;
+}
+:deep(.avatar-uploader .el-upload:hover) { border-color: #409EFF; }
 .avatar-uploader-icon { font-size: 28px; color: #8c939d; width: 120px; height: 120px; text-align: center; line-height: 120px; }
 .avatar { width: 120px; height: 120px; display: block; object-fit: cover; }
 

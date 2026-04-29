@@ -16,7 +16,7 @@
         <el-menu-item index="/admin/dashboard">
           <el-icon><Odometer /></el-icon><span>控制台总览</span>
         </el-menu-item>
-         <el-menu-item index="/admin/majors">
+        <el-menu-item index="/admin/majors">
           <el-icon><Guide /></el-icon><span>专业数据管理</span>
         </el-menu-item>
         <el-menu-item index="/admin/users">
@@ -29,26 +29,21 @@
           <el-icon><Calendar /></el-icon><span>活动与公告发布</span>
         </el-menu-item>
         <el-menu-item index="/admin/study"> 
-          <el-icon><Reading /></el-icon>
-          <span>学习资料</span>
+          <el-icon><Reading /></el-icon><span>学习资料</span>
         </el-menu-item>
-        
         <el-menu-item index="/admin/quiz-manage"> 
-          <el-icon><EditPen /></el-icon>
-          <span>智学题库管理</span>
+          <el-icon><EditPen /></el-icon><span>智学题库管理</span>
         </el-menu-item>
-
         <el-menu-item index="/admin/work">
           <el-icon><Connection /></el-icon><span>工作分配与模板</span>
         </el-menu-item>
-
         <el-menu-item index="/admin/inventory">
           <el-icon><Box /></el-icon><span>物资仓库管理</span>
         </el-menu-item>
 
-        <!-- <el-menu-item index="/admin/god-mode">
-         <el-icon><View /></el-icon><span>👁️‍🗨️ 成就法则管理</span>
-        </el-menu-item> -->
+        <el-menu-item index="/admin/publish-notice">
+          <el-icon><Bell /></el-icon><span>全站更新发布</span>
+        </el-menu-item>
         
         <div class="logout-box">
           <el-button type="danger" plain class="w-100" @click="handleLogout">退出管理后台</el-button>
@@ -101,7 +96,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { User, Goods, Calendar, Odometer, House, Connection, Guide, Reading, EditPen, View } from '@element-plus/icons-vue'
+// ⚠️ 注意：这里补齐了 Box 和新增了 Bell 图标的引用
+import { User, Goods, Calendar, Odometer, House, Connection, Guide, Reading, EditPen, View, Box, Bell } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { db } from '../cloudbase'
 

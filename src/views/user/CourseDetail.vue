@@ -20,7 +20,10 @@
               <el-col :xs="24" :sm="12" :md="12" v-for="(item, idx) in courseData.links" :key="idx" class="mb-20">
                 <div class="resource-card link-card" @click="handleDownload(item)">
                   <div class="r-icon"><el-icon><VideoPlay /></el-icon></div>
-                  <div class="r-info"><h4>{{ item.title }}</h4><p class="url-text">在线播放视频</p></div>
+                  <div class="r-info">
+                    <h4 :style="getDynamicStyle(item.title)">{{ item.title }}</h4>
+                    <p class="url-text">在线播放视频</p>
+                  </div>
                   <div class="r-status"><el-tag type="success" size="small" effect="plain">免费</el-tag></div>
                 </div>
               </el-col>
@@ -36,7 +39,9 @@
               <el-col :xs="24" :sm="12" :md="8" v-for="(item, idx) in courseData.materials" :key="idx" class="mb-20">
                 <div class="resource-card doc-card" @click="handleDownload(item)">
                   <div class="r-icon"><el-icon><Document /></el-icon></div>
-                  <div class="r-info"><h4>{{ item.title }}</h4></div>
+                  <div class="r-info">
+                    <h4 :style="getDynamicStyle(item.title)">{{ item.title }}</h4>
+                  </div>
                   <div class="r-status">
                     <el-tag v-if="item.isFree" type="success" size="small" effect="plain">直接下载</el-tag>
                     <el-tag v-else type="warning" size="small" effect="dark"><el-icon><Lock/></el-icon> {{ item.cost }} 分</el-tag>
@@ -55,7 +60,9 @@
               <el-col :xs="24" :sm="12" :md="8" v-for="(item, idx) in courseData.exams" :key="idx" class="mb-20">
                 <div class="resource-card exam-card" @click="handleDownload(item)">
                   <div class="r-icon"><el-icon><Medal /></el-icon></div>
-                  <div class="r-info"><h4>{{ item.title }}</h4></div>
+                  <div class="r-info">
+                    <h4 :style="getDynamicStyle(item.title)">{{ item.title }}</h4>
+                  </div>
                   <div class="r-status"><el-tag type="success" size="small" effect="plain">免费</el-tag></div>
                 </div>
               </el-col>
@@ -88,8 +95,54 @@ onMounted(async () => {
   } finally { loading.value = false }
 })
 
+// 🌟 新增：计算字符串视觉宽度 (中文算2，英文/数字算1)
+const getTextWidth = (text) => {
+  if (!text) return 0
+  let width = 0
+  for (let i = 0; i < text.length; i++) {
+    width += text.charCodeAt(i) > 255 ? 2 : 1
+  }
+  return width
+}
+
+// 🌟 新增：根据文字长度动态返回 CSS 样式
+const getDynamicStyle = (text) => {
+  if (!text) return { fontSize: '16px' }
+  const width = getTextWidth(text)
+  
+  // 长度较短 (约 10个中文 以内)：正常大字号
+  if (width <= 20) return { fontSize: '16px', lineHeight: '1.4' }
+  // 中等长度 (约 16个中文 以内)：字号微缩
+  if (width <= 32) return { fontSize: '14px', lineHeight: '1.3' }
+  // 超长文本：极小字号 + 紧凑行高，并允许换行显示
+  return { fontSize: '12px', lineHeight: '1.2' }
+}
+
+// 🛠️ 顺手帮你修复了移动端/微信拦截下载的Bug
+const processDownload = (url, title) => {
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+  const isWeChat = /MicroMessenger/i.test(navigator.userAgent)
+
+  if (isMobile && isWeChat) {
+    ElMessageBox.alert('微信限制了文件下载，请点击右上角三个点【在浏览器打开】进行查看或下载哦！', '温馨提示', { confirmButtonText: '知道了', type: 'warning' })
+  } else if (isMobile) {
+    window.location.href = url
+  } else {
+    const link = document.createElement('a')
+    link.href = url
+    link.target = '_blank'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+}
+
 const handleDownload = async (item) => {
-  if (item.isFree || item.isFree === undefined) { window.open(item.url, '_blank'); return }
+  if (item.isFree || item.isFree === undefined) { 
+    processDownload(item.url, item.title)
+    return 
+  }
+  
   const currentPoints = currentUser.value.points || 0
   if (currentPoints < item.cost) return ElMessage.warning(`你的积分不足哦！需要 ${item.cost} 积分`)
 
@@ -102,8 +155,16 @@ const handleDownload = async (item) => {
     localStorage.setItem('user', JSON.stringify(currentUser.value))
     
     ElMessage.success('解锁成功！')
-    setTimeout(() => { window.open(item.url, '_blank'); loading.value = false }, 800)
-  } catch (error) { loading.value = false }
+    
+    // 延迟拉起下载
+    setTimeout(() => { 
+      processDownload(item.url, item.title)
+      loading.value = false 
+    }, 800)
+    
+  } catch (error) { 
+    loading.value = false 
+  }
 }
 </script>
 
@@ -133,7 +194,10 @@ const handleDownload = async (item) => {
 
 .r-icon { width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 26px; color: white; margin-right: 18px; flex-shrink: 0; }
 .r-info { flex: 1; overflow: hidden; display: flex; flex-direction: column; justify-content: center;}
-.r-info h4 { margin: 0 0 6px 0; font-size: 16px; color: #2c3e50; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600;}
+
+/* 🌟 核心修改：去除了 nowrap 和 ellipsis，换成 break-word 让超长文本自然换行 */
+.r-info h4 { margin: 0 0 6px 0; color: #2c3e50; font-weight: 600; word-break: break-word; }
+
 .url-text { margin: 0; font-size: 13px; color: #95a5a6;}
 
 .link-card:hover { border-color: #f56c6c; } .link-card .r-icon { background: linear-gradient(135deg, #ff758c 0%, #ff7eb3 100%); }
