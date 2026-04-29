@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { ElMessage } from 'element-plus' // 🌟 新增：引入消息提示
+import { ElMessage } from 'element-plus'
+// 🌟 新增：引入云数据库，用于记录访问数据
+import { db } from '../cloudbase' 
 
 // 1. 引入基础页面组件
 import Login from '../views/Login.vue'
@@ -85,35 +87,28 @@ const router = createRouter({
   routes
 })
 
-// === 🛡️ 全局路由守卫（门禁系统） ===
+// === 🛡️ 全局路由前置守卫（门禁系统，决定能不能进页面） ===
 router.beforeEach((to, from, next) => {
-  // 1. 从本地获取当前登录用户信息
   const userStr = localStorage.getItem('user')
   const user = userStr ? JSON.parse(userStr) : null
-
-  // 2. 定义白名单（不需要登录就能访问的页面）
   const publicPaths = ['/login', '/register', '/reset-password']
   
   if (publicPaths.includes(to.path)) {
-    // 防呆设计：如果已经登录了还去登录页，按照身份强行踢回控制台
     if (user) {
       if (user.role === 'admin') return next('/admin/dashboard')
       if (user.role === 'member') return next('/member/dashboard')
       return next('/user/dashboard')
     }
-    return next() // 没登录的正常进入登录页
+    return next() 
   }
 
-  // 3. 如果没登录，且访问的不是公开页面，拦截！
   if (!user || !user.role) {
     ElMessage.warning('检测到您未登录或登录已过期，请先登录！')
     return next('/login')
   }
 
-  // 4. 越权拦截：判断角色权限
   const role = user.role
 
-  // 🚫 尝试闯入管理员专属页面
   if (to.path.startsWith('/admin')) {
     if (role !== 'admin') {
       ElMessage.error('🛑 越权警告：您不是管理员，无法访问此区域！')
@@ -121,7 +116,6 @@ router.beforeEach((to, from, next) => {
     }
   }
 
-  // 🚫 尝试闯入社团内部成员专属页面
   if (to.path.startsWith('/member')) {
     if (role !== 'member' && role !== 'admin') {
       ElMessage.error('🛑 越权警告：您不是内部成员，无法访问此区域！')
@@ -129,8 +123,36 @@ router.beforeEach((to, from, next) => {
     }
   }
 
-  // 5. 检查全部通过，正式放行
   next()
+})
+
+// === 📊 全局路由后置钩子（流量与在线状态统计，页面跳转后执行，不卡顿） ===
+router.afterEach((to, from) => {
+  const userStr = localStorage.getItem('user')
+  const user = userStr ? JSON.parse(userStr) : null
+  const now = Date.now()
+
+  try {
+    // 1. 刷新在线状态：只要用户点了任何页面，就更新他的最后活跃时间
+    if (user && user._id) {
+      db.collection('users').doc(user._id).update({
+        lastActiveTime: now
+      }).catch(() => {}) // 忽略报错，静默执行
+    }
+
+    // 2. 增加访问量记录 (只记录非公开页面的有效访问，避免把刷新登录页也算进去)
+    const publicPaths = ['/login', '/register', '/reset-password']
+    if (!publicPaths.includes(to.path)) {
+      db.collection('visit_logs').add({
+        path: to.path,
+        userId: user ? user._id : 'guest',
+        role: user ? user.role : 'guest',
+        createTime: now
+      }).catch(() => {}) 
+    }
+  } catch (e) {
+    // 即使出现异常，也绝对不影响用户的正常网页浏览
+  }
 })
 
 export default router

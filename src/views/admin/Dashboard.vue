@@ -16,8 +16,8 @@
       </div>
     </div>
 
-    <el-row :gutter="15" class="mb-24">
-      <el-col :xs="24" :sm="8" v-for="(card, index) in statCards" :key="index" :class="['animate-up-' + (index+1), 'mb-15-mobile']">
+    <div class="stat-cards-grid mb-24">
+      <div v-for="(card, index) in statCards" :key="index" :class="['animate-up-' + (index+1)]">
         <div class="data-card-premium" :class="card.bgClass">
           <div class="card-glass"></div>
           <div class="inner-content">
@@ -32,8 +32,8 @@
             </div>
           </div>
         </div>
-      </el-col>
-    </el-row>
+      </div>
+    </div>
 
     <el-row :gutter="20" class="flex-row-stretch">
       <el-col :xs="24" :md="14" class="animate-up-4 flex-col">
@@ -127,18 +127,23 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { User, Calendar, Bell, ArrowRight, Histogram, ChatLineSquare, Monitor, Operation } from '@element-plus/icons-vue'
+// 🌟 核心修改 2：引入 Connection (在线) 和 TrendCharts (数据趋势) 图标
+import { User, Calendar, Bell, ArrowRight, Histogram, ChatLineSquare, Monitor, Operation, Connection, TrendCharts } from '@element-plus/icons-vue'
 import { db } from '../../cloudbase'
 
 const loading = ref(false)
-const stats = ref({ users: 0, activities: 0, notices: 0 })
+// 🌟 核心修改 3：在数据结构中加入在线人数和昨日访问量
+const stats = ref({ users: 0, activities: 0, notices: 0, onlineUsers: 0, yesterdayVisits: 0 })
 const recentActivities = ref([])
 const recentNotices = ref([])
 
 const noticeDialogVisible = ref(false)
 const selectedNotice = ref({ title: '', content: '', targets: [] })
 
+// 🌟 核心修改 4：加入新的卡片配置
 const statCards = computed(() => [
+  { title: '当前在线人数', value: stats.value.onlineUsers, unit: '人', icon: 'Connection', bgClass: 'bg-orange' },
+  { title: '昨日访问人次', value: stats.value.yesterdayVisits, unit: '次', icon: 'TrendCharts', bgClass: 'bg-purple' },
   { title: '注册用户总数', value: stats.value.users, unit: '人', icon: 'User', bgClass: 'bg-indigo' },
   { title: '已发布活动', value: stats.value.activities, unit: '场', icon: 'Calendar', bgClass: 'bg-emerald' },
   { title: '已发布公告', value: stats.value.notices, unit: '条', icon: 'Bell', bgClass: 'bg-rose' }
@@ -147,19 +152,71 @@ const statCards = computed(() => [
 onMounted(async () => {
   loading.value = true
   try {
-    const [uCount, aCount, nCount] = await Promise.all([
-      db.collection('users').count(),
-      db.collection('activities').count(),
-      db.collection('announcements').count()
-    ])
-    stats.value = { users: uCount.total, activities: aCount.total, notices: nCount.total }
+    const _ = db.command
 
+    // --- 📊 1. 获取常规统计数据 ---
+    // 加了容错，防止某个表突然被删导致整个页面卡死
+    let uCount = { total: 0 }, aCount = { total: 0 }, nCount = { total: 0 }
+    try {
+      const res = await Promise.all([
+        db.collection('users').count(),
+        db.collection('activities').count(),
+        db.collection('announcements').count()
+      ])
+      uCount = res[0]; aCount = res[1]; nCount = res[2]
+    } catch (e) {
+      console.warn('基础数据读取失败', e)
+    }
+
+    // --- 🟢 2. 获取当前在线人数 ---
+    let onlineCount = 0
+    try {
+      const fifteenMinsAgo = new Date().getTime() - 15 * 60 * 1000
+      const onlineRes = await db.collection('users').where({
+        lastActiveTime: _.gt(fifteenMinsAgo)
+      }).count()
+      
+      // 🌟 修复点 1：加上 || 0 防治 undefined 变成空白
+      onlineCount = onlineRes.total || 0 
+    } catch (e) {
+      console.warn('在线人数查询失败', e)
+    }
+
+    // --- 📈 3. 获取昨日访问总人次 ---
+    let visitsCount = 0
+    try {
+      const now = new Date()
+      const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0).getTime()
+      const yesterdayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999).getTime()
+      
+      const visitsRes = await db.collection('visit_logs').where({
+        // 🌟 修复点 2：使用更符合腾讯云开发规范的链式查询写法
+        createTime: _.gte(yesterdayStart).and(_.lte(yesterdayEnd))
+      }).count()
+      
+      // 🌟 修复点 1：加上 || 0 
+      visitsCount = visitsRes.total || 0
+    } catch (e) {
+      console.warn('昨日访问量查询失败', e)
+    }
+
+    // 赋值给页面变量（每一项都加上 || 0 终极兜底）
+    stats.value = { 
+      users: uCount.total || 0, 
+      activities: aCount.total || 0, 
+      notices: nCount.total || 0,
+      onlineUsers: onlineCount || 0,
+      yesterdayVisits: visitsCount || 0
+    }
+
+    // --- 📰 4. 获取近期活动与公告 ---
     const [actRes, noticeRes] = await Promise.all([
       db.collection('activities').orderBy('createTime', 'desc').limit(6).get(),
       db.collection('announcements').orderBy('createTime', 'desc').limit(5).get()
     ])
     recentActivities.value = actRes.data || []
     recentNotices.value = noticeRes.data || []
+
   } finally {
     loading.value = false
   }
@@ -193,24 +250,35 @@ const formatDate = (dateString) => {
 .subtitle { margin: 0; color: #64748b; font-size: 15px; }
 .level-tag { height: 32px; padding: 0 16px; font-weight: bold; border: none; }
 
+/* 🌟 核心修改 5：全新的 Grid 自适应网格布局，完美适配 5 张卡片 */
+.stat-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 15px;
+}
+
 .data-card-premium {
-  height: 120px; border-radius: 24px; position: relative; overflow: hidden;
-  padding: 24px; display: flex; align-items: center; color: white; transition: 0.3s;
+  height: 110px; border-radius: 20px; position: relative; overflow: hidden;
+  padding: 20px; display: flex; align-items: center; color: white; transition: 0.3s;
 }
 .data-card-premium:hover { transform: translateY(-5px); box-shadow: 0 12px 24px rgba(0,0,0,0.15); }
+
+/* 新增的两个酷炫渐变色 */
+.bg-orange { background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%); }
+.bg-purple { background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); }
 .bg-indigo { background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%); }
 .bg-emerald { background: linear-gradient(135deg, #059669 0%, #10b981 100%); }
 .bg-rose { background: linear-gradient(135deg, #e11d48 0%, #fb7185 100%); }
 
 .inner-content { display: flex; align-items: center; z-index: 2; width: 100%; }
 .icon-wrapper {
-  width: 56px; height: 56px; background: rgba(255,255,255,0.2); border-radius: 16px;
-  display: flex; align-items: center; justify-content: center; font-size: 28px; margin-right: 20px; flex-shrink: 0;
+  width: 50px; height: 50px; background: rgba(255,255,255,0.2); border-radius: 14px;
+  display: flex; align-items: center; justify-content: center; font-size: 24px; margin-right: 15px; flex-shrink: 0;
 }
-.data-text .label { font-size: 13px; opacity: 0.8; font-weight: 500; }
-.data-text .value { font-size: 32px; font-weight: 800; line-height: 1.2; }
-.data-text .value small { font-size: 14px; font-weight: 400; opacity: 0.7; }
-.card-glass { position: absolute; top: -20%; right: -10%; width: 150px; height: 150px; background: rgba(255,255,255,0.1); border-radius: 50%; }
+.data-text .label { font-size: 13px; opacity: 0.9; font-weight: 500; margin-bottom: 2px; display: block;}
+.data-text .value { font-size: 28px; font-weight: 800; line-height: 1.1; }
+.data-text .value small { font-size: 13px; font-weight: 400; opacity: 0.7; }
+.card-glass { position: absolute; top: -20%; right: -10%; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border-radius: 50%; }
 
 .admin-table { padding: 10px; }
 .target-badge { margin-right: 4px; border-radius: 6px; font-weight: bold; margin-bottom: 2px;}
@@ -243,7 +311,6 @@ const formatDate = (dateString) => {
 @media screen and (max-width: 768px) {
   .hide-on-mobile { display: none !important; }
   .page-header h2 { font-size: 24px; }
-  .mb-15-mobile { margin-bottom: 15px; }
   .mb-20-mobile { margin-bottom: 20px; }
   .card-header { padding-bottom: 10px; }
   .data-text .value { font-size: 26px; }
