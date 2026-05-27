@@ -7,7 +7,7 @@
         <p class="subtitle">统筹社团通知下发，实时追踪全站活动数据流</p>
       </div>
       <div class="action-section">
-        <el-button type="primary" size="large" round class="publish-btn shadow-glow" @click="handleOpenForm">
+        <el-button type="primary" size="large" round class="publish-btn shadow-glow" @click="handleOpenForm(null)">
           <el-icon class="mr-5"><Plus /></el-icon> 
           {{ activeTab === 'notices' ? '发布新公告' : '发起新活动' }}
         </el-button>
@@ -145,7 +145,7 @@
       </template>
     </el-dialog>
 
-    <el-drawer v-model="drawerVisible" :title="`【${currentAct.theme}】实名名单`" size="80%">
+    <el-drawer v-model="drawerVisible" :title="`【${currentAct.theme || '活动'}】实名名单`" size="80%">
        <div class="drawer-content p-20">
           <div class="stat-banner mb-20">
              <el-statistic title="当前报名人数" :value="regList.length" />
@@ -205,6 +205,8 @@ const fetchNotices = async () => {
   try {
     const res = await db.collection('announcements').orderBy('createTime', 'desc').get()
     noticeList.value = res.data || []
+  } catch(e) {
+    console.error(e)
   } finally { tableLoading.value = false }
 }
 
@@ -213,6 +215,8 @@ const fetchActivities = async () => {
   try {
     const res = await db.collection('activities').orderBy('createTime', 'desc').get()
     activityList.value = res.data || []
+  } catch(e) {
+    console.error(e)
   } finally { tableLoading.value = false }
 }
 
@@ -231,19 +235,20 @@ const handleFileUpload = async (file) => {
     formData.coverUrl = linkRes.fileList[0].tempFileURL
     ElMessage.success('封面上传成功')
   } catch (e) {
-    ElMessage.error('图片上传失败')
+    console.error(e)
+    ElMessage.error('图片上传失败: ' + (e.message || e.errMsg))
   } finally { uploading.value = false }
 }
 
 // ================= 发布与编辑核心逻辑 =================
 const handleOpenForm = (item = null) => {
-  if (item) {
+  if (item && item._id) {
     isEditing.value = true
     Object.assign(formData, {
       _id: item._id,
       title: item.title || item.theme,
       content: item.content,
-      targets: item.targets,
+      targets: item.targets || [],
       coverUrl: item.coverUrl || '',
       link: item.link || '',
       time: item.time || '',
@@ -271,15 +276,16 @@ const handleSubmit = async () => {
   }
   
   // 区分公告标题和活动主题
-  if (activeTab.value === 'notices') payload.title = formData.title
-  else {
+  if (activeTab.value === 'notices') {
+    payload.title = formData.title
+  } else {
     payload.theme = formData.title
     payload.time = formData.time ? new Date(formData.time).getTime() : ''
     payload.deadline = formData.deadline ? new Date(formData.deadline).getTime() : ''
   }
 
   try {
-    if (isEditing.value) {
+    if (isEditing.value && formData._id) {
       await db.collection(collectionName).doc(formData._id).update(payload)
       ElMessage.success('已更新')
     } else {
@@ -290,8 +296,12 @@ const handleSubmit = async () => {
     formVisible.value = false
     activeTab.value === 'notices' ? fetchNotices() : fetchActivities()
   } catch (e) {
-    ElMessage.error('保存失败')
-  } finally { submitting.value = false }
+    // 🌟 终极照妖镜：在控制台打印完整报错对象，并把关键错误信息弹到屏幕上！
+    console.error('【深度报错追踪】保存失败详细原因:', e)
+    ElMessage.error('保存失败: ' + (e.message || e.errMsg || '请按 F12 查看控制台红色报错'))
+  } finally { 
+    submitting.value = false 
+  }
 }
 
 // ================= 撤回/删除逻辑 =================
@@ -327,8 +337,11 @@ const viewRegistrations = async (act) => {
       return { realName: u?.realName || '未知', username: u?.username || '未知', regTime: record.createTime }
     }).sort((a,b) => b.regTime - a.regTime)
     regList.value = combined
-  } catch (err) { ElMessage.error('加载名单失败') } 
-  finally { drawerLoading.value = false }
+  } catch (err) { 
+    ElMessage.error('加载名单失败') 
+  } finally { 
+    drawerLoading.value = false 
+  }
 }
 
 const handleTabChange = () => { tableLoading.value = true; setTimeout(() => tableLoading.value = false, 300); }
