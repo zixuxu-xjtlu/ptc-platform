@@ -93,9 +93,9 @@
                     <h4>{{ notice.title }}</h4>
                     <el-icon><ArrowRight /></el-icon>
                   </div>
-                  <p class="np-excerpt">{{ notice.content.substring(0, 30) }}...</p>
+                  <p class="np-excerpt">{{ getNoticeExcerpt(notice.content) }}</p>
                   <div class="np-footer">
-                    <span class="scope-text">推送至: {{ notice.targets.join('/') }}</span>
+                    <span class="scope-text">推送至: {{ formatTargets(notice.targets).join('/') }}</span>
                   </div>
                 </div>
               </el-timeline-item>
@@ -118,7 +118,7 @@
           <p>{{ selectedNotice.content }}</p>
         </div>
         <div class="nv-footer mt-20">
-          <el-tag size="small" v-for="t in selectedNotice.targets" :key="t" class="mr-5">{{ t }}</el-tag>
+          <el-tag size="small" v-for="t in formatTargets(selectedNotice.targets)" :key="t" class="mr-5">{{ t }}</el-tag>
         </div>
       </div>
     </el-dialog>
@@ -143,11 +143,36 @@ const selectedNotice = ref({ title: '', content: '', targets: [] })
 // 🌟 核心修改 4：加入新的卡片配置
 const statCards = computed(() => [
   { title: '当前在线人数', value: stats.value.onlineUsers, unit: '人', icon: 'Connection', bgClass: 'bg-orange' },
-  { title: '昨日访问人次', value: stats.value.yesterdayVisits, unit: '次', icon: 'TrendCharts', bgClass: 'bg-purple' },
+  { title: '昨日登录人次', value: stats.value.yesterdayVisits, unit: '次', icon: 'TrendCharts', bgClass: 'bg-purple' },
   { title: '注册用户总数', value: stats.value.users, unit: '人', icon: 'User', bgClass: 'bg-indigo' },
   { title: '已发布活动', value: stats.value.activities, unit: '场', icon: 'Calendar', bgClass: 'bg-emerald' },
   { title: '已发布公告', value: stats.value.notices, unit: '条', icon: 'Bell', bgClass: 'bg-rose' }
 ])
+
+const getDateKey = (date) => {
+  const d = new Date(date)
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${month}-${day}`
+}
+
+const countLogsByDay = async (collectionName, date) => {
+  const _ = db.command
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  const end = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime()
+
+  try {
+    const dateKeyRes = await db.collection(collectionName).where({
+      dateKey: getDateKey(date)
+    }).count()
+    if (dateKeyRes.total > 0) return dateKeyRes.total
+  } catch (e) {}
+
+  const rangeRes = await db.collection(collectionName).where({
+    createTime: _.gte(start).and(_.lt(end))
+  }).count()
+  return rangeRes.total || 0
+}
 
 onMounted(async () => {
   loading.value = true
@@ -182,22 +207,26 @@ onMounted(async () => {
       console.warn('在线人数查询失败', e)
     }
 
-    // --- 📈 3. 获取昨日访问总人次 ---
+    // --- 📈 3. 获取昨日登录总人次 ---
     let visitsCount = 0
     try {
       const now = new Date()
-      const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0).getTime()
-      const yesterdayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999).getTime()
-      
-      const visitsRes = await db.collection('visit_logs').where({
-        // 🌟 修复点 2：使用更符合腾讯云开发规范的链式查询写法
-        createTime: _.gte(yesterdayStart).and(_.lte(yesterdayEnd))
-      }).count()
-      
-      // 🌟 修复点 1：加上 || 0 
-      visitsCount = visitsRes.total || 0
+      const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+      try {
+        visitsCount = await countLogsByDay('login_logs', yesterday)
+      } catch (e) {
+        visitsCount = 0
+      }
+
+      if (visitsCount === 0) {
+        try {
+          visitsCount = await countLogsByDay('visit_logs', yesterday)
+        } catch (e) {
+          visitsCount = 0
+        }
+      }
     } catch (e) {
-      console.warn('昨日访问量查询失败', e)
+      console.warn('昨日登录量查询失败', e)
     }
 
     // 赋值给页面变量（每一项都加上 || 0 终极兜底）
@@ -225,6 +254,17 @@ onMounted(async () => {
 const showNoticeDetail = (notice) => {
   selectedNotice.value = notice
   noticeDialogVisible.value = true
+}
+
+const formatTargets = (targets) => {
+  if (Array.isArray(targets)) return targets
+  if (typeof targets === 'string' && targets) return [targets]
+  return []
+}
+
+const getNoticeExcerpt = (content) => {
+  if (!content) return '暂无公告内容'
+  return `${String(content).substring(0, 30)}...`
 }
 
 const formatDate = (dateString) => {

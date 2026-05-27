@@ -111,6 +111,26 @@ const loginForm = reactive({
   code: ''
 })
 
+const getDateKey = (timestamp = Date.now()) => {
+  const d = new Date(timestamp)
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${month}-${day}`
+}
+
+const recordLoginLog = (userInfo) => {
+  const now = Date.now()
+  db.collection('login_logs').add({
+    userId: userInfo._id,
+    username: userInfo.username || '',
+    realName: userInfo.realName || '',
+    role: userInfo.role || 'user',
+    loginType: activeTab.value,
+    createTime: now,
+    dateKey: getDateKey(now)
+  }).catch(() => {})
+}
+
 // 🌟 核心修复2：只要进入登录页，就强制忘掉动画记忆
 onMounted(() => {
   sessionStorage.removeItem('sloganPlayed')
@@ -203,6 +223,7 @@ const handleLogin = () => {
 
           // 允许登录
           localStorage.setItem('user', JSON.stringify(userInfo))
+          recordLoginLog(userInfo)
           // 🌟 核心修复3：登录成功跳转前，再次确保动画记忆被清除
           sessionStorage.removeItem('sloganPlayed')
           

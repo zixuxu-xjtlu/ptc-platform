@@ -6,6 +6,9 @@
         <p class="subtitle">管理全员身份权限，当前已实现【待审核过滤】与【批量奖惩】</p>
       </div>
       <div class="action-group mt-15-mobile">
+        <el-button :loading="loading" round icon="Refresh" @click="fetchUsers(true)">
+          刷新名单
+        </el-button>
         <el-button type="warning" @click="openBatchDialog" class="batch-btn" round icon="MagicStick">
           批量奖惩
         </el-button>
@@ -18,7 +21,17 @@
     </div>
 
     <el-card shadow="never" class="premium-card animate-up">
-      <el-table :data="sortedFilteredUsers" style="width: 100%" v-loading="loading" stripe class="modern-table">
+      <div class="table-toolbar">
+        <el-radio-group v-model="roleFilter" size="small">
+          <el-radio-button label="all">全部 {{ users.length }}</el-radio-button>
+          <el-radio-button label="pending">待审核 {{ pendingCount }}</el-radio-button>
+          <el-radio-button label="member">正式干事 {{ memberCount }}</el-radio-button>
+          <el-radio-button label="user">普通学生 {{ userCount }}</el-radio-button>
+        </el-radio-group>
+        <span class="table-count">当前显示 {{ sortedFilteredUsers.length }} 人</span>
+      </div>
+
+      <el-table :data="pagedUsers" style="width: 100%" v-loading="loading" stripe class="modern-table">
         <el-table-column label="权限等级" width="120">
           <template #default="scope">
             <el-tag v-if="scope.row.role === 'admin'" type="danger" effect="dark" round class="role-tag">管理层</el-tag>
@@ -86,6 +99,16 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pagination-bar">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
+          :total="sortedFilteredUsers.length"
+        />
+      </div>
     </el-card>
 
     <el-dialog v-model="batchDialogVisible" title="⚡ 批量高效奖惩中心" width="90%" max-width="500px" class="premium-dialog">
@@ -135,7 +158,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Coin, Trophy, OfficeBuilding, Edit, Medal, MagicStick, InfoFilled } from '@element-plus/icons-vue'
 import { db } from '../../cloudbase'
@@ -143,6 +166,14 @@ import { db } from '../../cloudbase'
 const loading = ref(false)
 const users = ref([])
 const searchKey = ref('')
+const roleFilter = ref('all')
+const currentPage = ref(1)
+const pageSize = ref(20)
+let refreshTimer = null
+
+const pendingCount = computed(() => users.value.filter(u => u.role === 'member' && u.status === 'pending').length)
+const memberCount = computed(() => users.value.filter(u => u.role === 'member' && u.status !== 'pending').length)
+const userCount = computed(() => users.value.filter(u => u.role === 'user').length)
 
 const sortedFilteredUsers = computed(() => {
   // 🌟 排序权重：管理层最高，待审核干事次之（方便管理），已验证干事随后，普通学生最后
@@ -152,24 +183,59 @@ const sortedFilteredUsers = computed(() => {
     (u.realName || '').includes(searchKey.value) || 
     (u.username || '').includes(searchKey.value)
   )
+
+  if (roleFilter.value === 'pending') {
+    result = result.filter(u => u.role === 'member' && u.status === 'pending')
+  } else if (roleFilter.value === 'member') {
+    result = result.filter(u => u.role === 'member' && u.status !== 'pending')
+  } else if (roleFilter.value === 'user') {
+    result = result.filter(u => u.role === 'user')
+  }
   
-  return result.sort((a, b) => {
+  return [...result].sort((a, b) => {
     const aWeight = (a.role === 'member' && a.status === 'pending') ? roleWeights.pending_member : (roleWeights[a.role] || 0)
     const bWeight = (b.role === 'member' && b.status === 'pending') ? roleWeights.pending_member : (roleWeights[b.role] || 0)
     return bWeight - aWeight
   })
 })
 
-onMounted(() => { fetchUsers() })
+const pagedUsers = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return sortedFilteredUsers.value.slice(start, start + pageSize.value)
+})
 
-const fetchUsers = async () => {
-  loading.value = true
+watch([searchKey, roleFilter, pageSize], () => {
+  currentPage.value = 1
+})
+
+onMounted(() => {
+  fetchUsers()
+  refreshTimer = setInterval(() => fetchUsers(false), 30000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+})
+
+const fetchUsers = async (showTip = false) => {
+  if (showTip || users.value.length === 0) loading.value = true
   try {
-    const res = await db.collection('users').limit(500).get()
-    users.value = res.data || []
+    const pageLimit = 100
+    const countRes = await db.collection('users').count()
+    const total = countRes.total || 0
+    const pageCount = Math.max(1, Math.ceil(total / pageLimit))
+    const requests = Array.from({ length: pageCount }, (_, index) => (
+      db.collection('users').skip(index * pageLimit).limit(pageLimit).get()
+    ))
+
+    const results = await Promise.all(requests)
+    users.value = results.flatMap(res => res.data || [])
+    if (showTip) ElMessage.success(`已刷新，共 ${users.value.length} 人`)
   } catch (e) {
     ElMessage.error('数据加载失败')
-  } finally { loading.value = false }
+  } finally {
+    loading.value = false
+  }
 }
 
 // 🌟 修改：身份验证逻辑，将 status 设为 active
@@ -188,8 +254,11 @@ const handleVerify = async (user) => {
       status: 'active'
     })
     
+    user.status = 'active'
+    const index = users.value.findIndex(item => item._id === user._id)
+    if (index !== -1) users.value[index] = { ...users.value[index], status: 'active' }
     ElMessage.success(`审核已通过！${user.realName} 现在是正式干事了`)
-    fetchUsers()
+    fetchUsers(false)
   } catch (e) {
     if (e !== 'cancel') ElMessage.error('审核操作失败')
   } finally { loading.value = false }
@@ -304,7 +373,25 @@ const getAvatarStyle = (role, status) => {
 .search-input:focus-within { width: 240px; }
 :deep(.el-input__wrapper) { border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.03); }
 .premium-card { border-radius: 20px; border: 1px solid #f1f5f9; box-shadow: 0 10px 30px rgba(0,0,0,0.02) !important; }
+.table-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.table-count {
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 600;
+}
 .modern-table { border-radius: 15px; overflow: hidden; }
+.pagination-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 18px;
+}
 .role-tag { font-weight: bold; padding: 0 10px; }
 .user-info-cell { display: flex; align-items: center; gap: 10px; }
 .user-avatar { font-weight: bold; color: white; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.1); flex-shrink: 0;}
@@ -324,5 +411,6 @@ const getAvatarStyle = (role, status) => {
   .hide-on-mobile { display: none !important; }
   .search-input { width: 100%; }
   .btn-group { flex-direction: row; justify-content: flex-end; flex-wrap: wrap;}
+  .pagination-bar { justify-content: center; overflow-x: auto; }
 }
 </style>

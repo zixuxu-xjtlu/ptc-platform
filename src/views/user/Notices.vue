@@ -31,7 +31,9 @@
                   <p class="card-desc">{{ notice.content || '点击查看详情...' }}</p>
                   <div class="card-bottom">
                     <span class="card-time"><el-icon><Clock /></el-icon> {{ formatDate(notice.createTime) }}</span>
-                    <el-button link type="primary" size="small" class="read-btn">查看文章 &rarr;</el-button>
+                    <el-button link type="primary" size="small" class="read-btn">
+                      {{ notice.link ? '查看文章' : '查看详情' }} &rarr;
+                    </el-button>
                   </div>
                 </div>
               </div>
@@ -68,6 +70,23 @@
 
       </el-tabs>
     </el-card>
+
+    <el-dialog v-model="detailVisible" title="公告详情" width="560px" class="notice-detail-dialog">
+      <div v-if="currentNotice" class="detail-content">
+        <img v-if="currentNotice.coverUrl" :src="currentNotice.coverUrl" class="detail-cover" />
+        <h2 class="detail-title">{{ currentNotice.title }}</h2>
+        <div class="detail-meta">
+          <span>发布时间：{{ formatDate(currentNotice.createTime) }}</span>
+        </div>
+        <p class="detail-text">{{ currentNotice.content || '暂无正文内容' }}</p>
+        <div v-if="currentNotice.link" class="detail-actions">
+          <el-button type="primary" plain @click="openExternalLink(currentNotice.link)">查看外链原文</el-button>
+        </div>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="detailVisible = false">确认知晓</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -79,6 +98,8 @@ import { db } from '../../cloudbase'
 const activeTab = ref('unread')
 const allNotices = ref([])
 const currentUser = ref(JSON.parse(localStorage.getItem('user') || '{}'))
+const detailVisible = ref(false)
+const currentNotice = ref(null)
 
 const readStorageKey = `readNotices_${currentUser.value._id}`
 const readIds = ref(JSON.parse(localStorage.getItem(readStorageKey) || '[]'))
@@ -102,9 +123,13 @@ const handleOpenNotice = (notice) => {
   if (notice.link) {
     window.open(notice.link, '_blank')
   } else {
-    // 若没有外链时的兼容提示
-    console.log('该公告无外链，仅展示文本。')
+    currentNotice.value = notice
+    detailVisible.value = true
   }
+}
+
+const openExternalLink = (link) => {
+  if (link) window.open(link, '_blank')
 }
 
 const formatDate = (dateString) => {
@@ -304,9 +329,49 @@ const formatDate = (dateString) => {
   position: absolute;
 }
 
+.detail-content {
+  color: #2c3e50;
+}
+
+.detail-cover {
+  width: 100%;
+  max-height: 260px;
+  object-fit: cover;
+  border-radius: 12px;
+  margin-bottom: 18px;
+}
+
+.detail-title {
+  margin: 0 0 10px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.detail-meta {
+  color: #95a5a6;
+  font-size: 13px;
+  margin-bottom: 18px;
+}
+
+.detail-text {
+  color: #475569;
+  font-size: 15px;
+  line-height: 1.8;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.detail-actions {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #edf2f7;
+}
+
 /* 📱 手机端适配 */
 @media (max-width: 768px) {
   .notice-grid { grid-template-columns: 1fr; gap: 16px; }
   .card-cover-box { height: 180px; }
+  :deep(.notice-detail-dialog) { width: calc(100vw - 32px); }
 }
 </style>

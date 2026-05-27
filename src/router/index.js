@@ -87,6 +87,13 @@ const router = createRouter({
   routes
 })
 
+const getDateKey = (timestamp = Date.now()) => {
+  const d = new Date(timestamp)
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${month}-${day}`
+}
+
 // === 🛡️ 全局路由前置守卫（门禁系统，决定能不能进页面） ===
 router.beforeEach((to, from, next) => {
   const userStr = localStorage.getItem('user')
@@ -147,7 +154,8 @@ router.afterEach((to, from) => {
         path: to.path,
         userId: user ? user._id : 'guest',
         role: user ? user.role : 'guest',
-        createTime: now
+        createTime: now,
+        dateKey: getDateKey(now)
       }).catch(() => {}) 
     }
   } catch (e) {
